@@ -12,7 +12,8 @@ type DriverInterface interface {
 	GetClient() *sql.DB
 	Apply(command string) error
 	InitSchema() error
-	GetVersion() (string, error)
-	PushVersion(version string) error
-	PopVersion(version string) error
+	GetVersion() (int, error)
+	GetAppliedMigrations() ([]string, error)
+	PushVersion(version int) error
+	PopVersion() error
 }

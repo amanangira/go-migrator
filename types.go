@@ -8,27 +8,87 @@ import (
 )
 
 type MigrationDirection int
-type MigrationCommand string
 
 type MigrationInstruction struct {
 	Version   int
 	Direction MigrationDirection
-	Command   MigrationCommand
+	Command   string
 }
 
-type MigratorConfig struct {
+type Config struct {
 	AbsoluteMigrationsDirectory string
+	Debug                       bool
 
 	// Filename config
 	// TODO - allow overriding of this value via interface implementation
-	FileNameDelimiter       string
-	VersionIndexByDelimiter int
-	PartsCountByDelimiter   int
+	// TODO - Filename config made part of this config in order to allow customization in future
+	FileNameVersionDelimiter string
+	VersionIndexByDelimiter  int
+	PartsCountByDelimiter    int
+	FileNameFormat           string
 }
 
 type Migrator struct {
-	config *MigratorConfig
-	driver *db.DriverInterface
+	config Config
+	driver db.DriverInterface
+}
+
+func NewConfig(
+	directory string,
+	debug bool,
+) Config {
+	sanitizedDirectory := sanitizeDirectoryPath(directory)
+
+	return Config{
+		Debug:                       debug,
+		AbsoluteMigrationsDirectory: sanitizedDirectory,
+		FileNameVersionDelimiter:    FileNameDefaultExtensionDelimiter,
+		VersionIndexByDelimiter:     0,
+		PartsCountByDelimiter:       DefaultPartsCountForFileName,
+		FileNameFormat:              DefaultFileNameFormat(),
+	}
+}
+
+func DefaultFileNameFormat() string {
+	return fmt.Sprintf(`%s%s%s%s%s`,
+		FileNameVersionPlaceholder,
+		FileNameDefaultExtensionDelimiter,
+		FileNameDirectionPlaceholder,
+		FileNameDefaultExtensionDelimiter,
+		FileNameExtensionPlaceholder)
+}
+
+func NewMigratorWithConfig(
+	config Config,
+	driver db.DriverInterface,
+) *Migrator {
+	return &Migrator{
+		config: config,
+		driver: driver,
+	}
+}
+
+func NewMigrator(
+	directory string,
+	debug bool,
+	driver db.DriverInterface,
+) (*Migrator, error) {
+	sanitizedDirectory := sanitizeDirectoryPath(directory)
+
+	config := Config{
+		Debug:                       debug,
+		AbsoluteMigrationsDirectory: sanitizedDirectory,
+		FileNameVersionDelimiter:    FileNameDefaultExtensionDelimiter,
+		VersionIndexByDelimiter:     0,
+		PartsCountByDelimiter:       DefaultPartsCountForFileName,
+		FileNameFormat:              DefaultFileNameFormat(),
+	}
+
+	migrator := NewMigratorWithConfig(config, driver)
+
+	err := migrator.driver.Connect()
+
+	return migrator, err
 }
 
 func (m MigrationDirection) String() string {
@@ -40,30 +100,19 @@ func (m MigrationDirection) String() string {
 		return "Down"
 	}
 
-	panic("unsupported direction")
+	return ""
 }
 
-func NewConfig(
-	directory string,
-) *MigratorConfig {
-	sanitizedDirectory := sanitizeDirectoryPath(directory)
+func (m MigrationDirection) IsValid() bool {
+	switch m {
+	case MigrationDirectionUp:
+		return true
 
-	return &MigratorConfig{
-		AbsoluteMigrationsDirectory: sanitizedDirectory,
-		FileNameDelimiter:           ".",
-		VersionIndexByDelimiter:     0,
-		PartsCountByDelimiter:       DefaultPartsCountForFileName,
+	case MigrationDirectionDown:
+		return true
 	}
-}
 
-func NewMigrator(
-	config *MigratorConfig,
-	driver *db.DriverInterface,
-) *Migrator {
-	return &Migrator{
-		config: config,
-		driver: driver,
-	}
+	return false
 }
 
 func sanitizeDirectoryPath(directory string) string {
